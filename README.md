@@ -27,8 +27,8 @@ Es un laboratorio práctico orientado a construir un portfolio técnico en ciber
 
 🚀 Instalación
 1. Clonar el repositorio
-git clone https://github.com/usuario/proyecto-sesiones.git
-cd proyecto-sesiones
+git clone https://github.com/Moenni/Cyberseguridad-Laboratorio
+cd Cyberseguridad-Laboratorio
 
 
 2. Crear entorno virtual
