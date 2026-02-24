@@ -26,34 +26,7 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
         if cookies and "sessionId=" in cookies:
             session_id = cookies.split("sessionId=")[1].split(";")[0]
 
-       
-          # --- NUEVO ENDPOINT: comentarios vulnerables ---
-        if self.path == "/comment":
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.end_headers()
-
-            page = """
-            <html>
-              <body>
-                <h1>Comentarios</h1>
-                <form action="/comment" method="POST">
-                  <input type="text" name="msg">
-                  <input type="submit" value="Enviar">
-                </form>
-                <h2>Mensajes guardados:</h2>
-                <ul>
-             """
-            for c in COMMENTS:
-                # ⚠️ Vulnerable: se muestra sin sanitizar
-               page += f"<li>{c}</li>"
-            page += "</ul></body></html>"
-
-            self.wfile.write(page.encode("utf-8"))
-            return
-        # --- FIN NUEVO ENDPOINT ---
-
-         # Endpoint de logout
+        # Endpoint de logout
         if self.path == "/logout":
             if session_id:
                 delete_session(session_id)
@@ -65,6 +38,7 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(mensaje.encode("utf-8"))
             return
         # Endpoint vulnerable a XSS
+
         if self.path.startswith("/search"):
             query = self.path.split("?q=")[-1]
             mensaje = f"<html><body><h1>Resultados para: {query}</h1></body></html>"
@@ -151,25 +125,7 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(mensaje.encode("utf-8"))
 
     def do_POST(self):
-         # --- NUEVO ENDPOINT: guardar comentario ---
-        if self.path == "/comment":
-            length = int(self.headers.get("Content-Length"))
-            post_data = self.rfile.read(length).decode("utf-8")
-            params = dict(x.split("=") for x in post_data.split("&"))
-
-            msg = params.get("msg", "")
-            COMMENTS.append(msg)  # ⚠️ Vulnerable: se guarda sin sanitizar
-
-             # Redirigir de nuevo a /comment
-            self.send_response(303)
-            self.send_header("Location", "/comment")
-            self.end_headers()
-            return
-         # --- FIN NUEVO ENDPOINT ---
-
-
-
-         # Endpoint de transferencia protegida con CSRF
+        # Endpoint de transferencia protegida con CSRF
         if self.path == "/transfer":
             cookies = self.headers.get("Cookie")
             session_id = None

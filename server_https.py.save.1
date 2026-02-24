@@ -11,7 +11,7 @@ USERS = {
     "nicolas": "seguridad2026",
     "prueba": "abc123"
 }
-
+COMMENTS=[]
 # Función para validar credenciales
 def check_login(username, password):
     if username in USERS and USERS[username] == password:
@@ -249,8 +249,4 @@ httpd = http.server.HTTPServer(server_address, CookieHandler)
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(certfile="localhost+1.pem", keyfile="localhost+1-key.pem")
 
-httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-# Cargar sesiones previas desde el archivo JSON
-load_sessions()
-print("Servidor HTTPS con login multiusuario y sesiones en https://localhost:4443")
-httpd.serve_forever()
+httpd.socket = context.wrap_socke
