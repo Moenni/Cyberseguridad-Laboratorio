@@ -1,16 +1,23 @@
 import http.server
 import ssl
 import json
+import urllib.parse
+import html
 
 from sessions import( create_session, get_session, delete_session, regenerate_session, load_sessions)
 from security import validate_csrf, sanitize_input
 
+# Reiniciar sessions.json al arrancar el servidor
+with open("sessions.json", "w") as f:
+    f.write("[]")
 # Diccionario de usuarios válidos
 USERS = {
     "admin": "1234",
     "nicolas": "seguridad2026",
     "prueba": "abc123"
 }
+# Lista global para comentarios (vulnerable a Stored XSS)
+COMMENTS=[]
 
 # Función para validar credenciales
 def check_login(username, password):
@@ -46,7 +53,10 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
              """
             for c in COMMENTS:
                 # ⚠️ Vulnerable: se muestra sin sanitizar
-               page += f"<li>{c}</li>"
+               #page += f"<li>{sanitize_input(c)}</li>" ✅ Seguro: se sanitiza antes de mostrar
+
+               page +=f"<li>{html.escape(c)}</li>" #Para que se active el Alert Stored XSS no se sanitiza el inpunt
+
             page += "</ul></body></html>"
 
             self.wfile.write(page.encode("utf-8"))
@@ -156,9 +166,10 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length"))
             post_data = self.rfile.read(length).decode("utf-8")
             params = dict(x.split("=") for x in post_data.split("&"))
-
+             
             msg = params.get("msg", "")
-            COMMENTS.append(msg)  # ⚠️ Vulnerable: se guarda sin sanitizar
+            decode_msg = urllib.parse.unquote_plus(msg)
+            COMMENTS.append(decode_msg)  # ⚠️ Vulnerable: se guarda sin sanitizar
 
              # Redirigir de nuevo a /comment
             self.send_response(303)
