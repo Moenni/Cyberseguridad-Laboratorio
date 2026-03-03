@@ -4,7 +4,7 @@ import json
 import urllib.parse
 import html
 import secrets
-from sessions import( create_session, get_session, delete_session, regenerate_session, load_sessions)
+from sessions import( create_session, get_session, delete_session, regenerate_session, load_sessions,is_session_valid)
 from security import validate_csrf, sanitize_input
 from urllib.parse import unquote_plus
 CSRF_TOKEN = secrets.token_hex(16)  # Token CSRF global para demostración (en producción debería ser por sesión)
@@ -37,7 +37,13 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
         if cookies and "sessionId=" in cookies:
             session_id = cookies.split("sessionId=")[1].split(";")[0]
 
-       
+        # 🔒 Validación de timeout de sesión
+        if session_id and not is_session_valid(session_id):
+          self.send_response(401)
+          self.send_header("Content-type", "text/html; charset=utf-8")
+          self.end_headers()
+          self.wfile.write("Sesión expirada. Por favor, inicie sesión nuevamente.".encode("utf-8"))
+          return
           # --- NUEVO ENDPOINT: comentarios vulnerables ---
         if self.path == "/comment":
             self.send_response(200)
@@ -146,6 +152,7 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             """
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
+            self.send_header("Set-Cookie",f"sessionId={session_id};Secure;HttpOnly;SameSite=Strict;Max-Age=30")
             self.end_headers()
         else:
             session_id, user_data, csrf_token = create_session()
@@ -168,6 +175,18 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(mensaje.encode("utf-8"))
 
     def do_POST(self):
+        cookies = self.headers.get("Cookie")
+        session_id = None
+        if cookies and "sessionId=" in cookies:
+          session_id = cookies.split("sessionId=")[1].split(";")[0]
+          
+         # 🔒 Validación de timeout de sesión
+        if session_id and not is_session_valid(session_id):
+           self.send_response(401)
+           self.send_header("Content-type", "text/html; charset=utf-8")
+           self.end_headers()
+           self.wfile.write("Sesión expirada. Por favor, inicie sesión nuevamente.".encode("utf-8"))
+           return
          # --- NUEVO ENDPOINT: guardar comentario ---
         if self.path == "/comment":
             length = int(self.headers.get("Content-Length"))
@@ -193,95 +212,111 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
 
          # 3. Procesar comentario
         
-        decode_msg = unquote_plus(msg)
-        COMMENTS.append(decode_msg)
+            decode_msg = unquote_plus(msg)
+            COMMENTS.append(decode_msg)
 
          # 4. Redirigir
-        self.send_response(303)
-        self.send_header("Location", "/comment")
-        self.end_headers()
-        return
+            self.send_response(303)
+            self.send_header("Location", "/comment")
+            self.end_headers()
+            return
          # --- FIN NUEVO ENDPOINT ---
 
 
 
          # Endpoint de transferencia protegida con CSRF
         if self.path == "/transfer":
-            cookies = self.headers.get("Cookie")
-            session_id = None
-            if cookies and "sessionId=" in cookies:
-                session_id = cookies.split("sessionId=")[1].split(";")[0]
+           cookies = self.headers.get("Cookie")
+           session_id = None
+           if cookies and "sessionId=" in cookies:
+               session_id = cookies.split("sessionId=")[1].split(";")[0]
 
-            length = int(self.headers.get("Content-Length"))
-            post_data = self.rfile.read(length).decode("utf-8")
-            
-            #Parser robusto
-            
-            import urllib.parse
-            params = urllib.parse.parse_qs(post_data)
-            
-            csrf_token = params.get("csrf_token", [""])[0]
+           length = int(self.headers.get("Content-Length"))
+           post_data = self.rfile.read(length).decode("utf-8")
 
-            if not csrf_token:
-                self.send_response(400)  # Bad Request
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                mensaje = "<html><body><h1>Falta token CSRF ❌</h1></body></html>"
-                self.wfile.write(mensaje.encode("utf-8"))
-                return
+           import urllib.parse
+           params = urllib.parse.parse_qs(post_data)
 
-            session = get_session(session_id)
-            if not session:
-                self.send_response(401)  # Unauthorized
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                mensaje = "<html><body><h1>Sesión no válida ❌</h1></body></html>"
-            elif validate_csrf(session, csrf_token):
-                self.send_response(200)  # OK
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                mensaje = "<html><body><h1>Transferencia realizada con éxito ✅</h1></body></html>"
-            else:
-                self.send_response(403)  # Forbidden
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                mensaje = "<html><body><h1>Token CSRF inválido ❌</h1></body></html>"
+           csrf_token = params.get("csrf_token", [""])[0]
 
-            self.end_headers()
-            self.wfile.write(mensaje.encode("utf-8"))
-            return
+           if not csrf_token:
+               self.send_response(400)  # Bad Request
+               self.send_header("Content-type", "text/html; charset=utf-8")
+               self.end_headers()
+               mensaje = "<html><body><h1>Falta token CSRF ❌</h1></body></html>"
+               self.wfile.write(mensaje.encode("utf-8"))
+               return
 
+           session = get_session(session_id)
+           if not session:
+              self.send_response(401)  # Unauthorized
+              self.send_header("Content-type", "text/html; charset=utf-8")
+              self.end_headers()
+              mensaje = "<html><body><h1>Sesión no válida ❌</h1></body></html>"
+              self.wfile.write(mensaje.encode("utf-8"))
+              return
+
+           if validate_csrf(session, csrf_token):
+              self.send_response(200)  # OK
+              self.send_header("Content-type", "text/html; charset=utf-8")
+              self.end_headers()
+              mensaje = "<html><body><h1>Transferencia realizada con éxito ✅</h1></body></html>"
+           else:
+              self.send_response(403)  # Forbidden
+              self.send_header("Content-type", "text/html; charset=utf-8")
+              self.end_headers()
+              mensaje = "<html><body><h1>Token CSRF inválido ❌</h1></body></html>"
+
+           self.wfile.write(mensaje.encode("utf-8"))
+           return
         # Endpoint de login (validación de credenciales)
         if self.path == "/login":
             length = int(self.headers.get("Content-Length"))
             post_data = self.rfile.read(length).decode("utf-8")
-            params = dict(x.split("=") for x in post_data.split("&"))
-
-            username = params.get("username")
-            password = params.get("password")
-
-            if check_login(username, password):
-                session_id, user_data, csrf_token = create_session()
-                self.send_response(200)    # OK
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.send_header("Set-Cookie", f"sessionId={session_id}; Secure; HttpOnly; SameSite=Strict; Max-Age=30")
-                self.end_headers()
-                mensaje = f"""
-                <html>
-                  <body>
-                    <h1>Bienvenido {sanitize_input(username)} ✅</h1>
-                    <form action="/transfer" method="POST">
-                      <input type="hidden" name="csrf_token" value="{csrf_token}">
-                      <input type="submit" value="Simular transferencia segura">
-                    </form>
-                  </body>
-                </html>
-                """
+            
+            import urllib.parse
+            params = urllib.parse.parse_qs(post_data)
+            
+            username=params.get("username",[""])[0]
+            password=params.get("password",[""])[0]
+            
+            #Validacion simple (ejemplo)
+            if username=="admin" and password=="1234":
+              #1- si habia sesión previa, la eliminamos
+              if session_id:
+                    delete_session(session_id)
+              #2- creamos nueva sesión segura
+            
+              new_session_id,user_data,csrf_token = create_session(username)
+              
+              #3- Enviar cookie segura
+              
+              self.send_response(200)
+              self.send_header("Content-type", "text/html; charset=utf-8")
+              self.send_header("Set-Cookie", f"sessionId={new_session_id}; HttpOnly; Secure; SameSite=Strict")
+              self.end_headers()
+              
+              mensaje=f"""
+               <html>
+                 <body>
+                   <h1>Login exitoso ✅</h1>
+                   <p>Bienvenido, {sanitize_input(username)}.</p>
+                   <form action="/transfer" method="POST">
+                     <input type="hidden" name="csrf_token" value="{csrf_token}">
+                     <input type="submit" value="Simular transferencia segura">
+                   </form>
+                 </body>
+               </html>
+              """
+              self.wfile.write(mensaje.encode("utf-8"))
             else:
-                self.send_response(401) # Unauthorized
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                mensaje = "<html><body><h1>Credenciales inválidas ❌</h1></body></html>"
+              self.send_response(403)
+              self.send_header("Content-type", "text/html; charset=utf-8")
+              self.end_headers()
+              self.wfile.write("Credenciales inválidas ❌".encode("utf-8")) 
 
-            self.wfile.write(mensaje.encode("utf-8"))
-            return
+
+              
 
 # Configuración del servidor HTTPS
 server_address = ('localhost', 4443)

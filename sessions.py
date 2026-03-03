@@ -1,6 +1,8 @@
 import secrets
 import json 
 import os
+import time
+
 
 SESSION_FILE = "sessions.json"
 sessions = {}
@@ -30,9 +32,21 @@ def create_session(user_data=None):
     if not user_data:
         user_data = f"Usuario -{len(sessions)+1}"
     csrf_token = secrets.token_hex(16)
-    sessions[session_id] = {"user": user_data, "csrf": csrf_token}
+    sessions[session_id] = {"user": user_data, "csrf": csrf_token,"last_activity":time.time()}
     save_sessions()
     return session_id, user_data, csrf_token
+def is_session_valid(session_id, timeout=300):  # 300 segundos = 5 min
+    import time
+    session = get_session(session_id)
+    if not session:
+        return False
+    if time.time() - session.get("last_activity", 0) > timeout:
+        delete_session(session_id)
+        return False
+    # refrescar actividad
+    session["last_activity"] = time.time()
+    save_sessions()
+    return True
 
 def get_session(session_id):
     return sessions.get(session_id)
