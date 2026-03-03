@@ -3,9 +3,13 @@ import ssl
 import json
 import urllib.parse
 import html
-
+import secrets
 from sessions import( create_session, get_session, delete_session, regenerate_session, load_sessions)
 from security import validate_csrf, sanitize_input
+from urllib.parse import unquote_plus
+CSRF_TOKEN = secrets.token_hex(16)  # Token CSRF global para demostración (en producción debería ser por sesión)
+
+
 
 # Reiniciar sessions.json al arrancar el servidor
 with open("sessions.json", "w") as f:
@@ -40,11 +44,12 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
 
-            page = """
+            page = f"""
             <html>
               <body>
                 <h1>Comentarios</h1>
                 <form action="/comment" method="POST">
+                  <input type ="hidden" name="csrf_token" value="{CSRF_TOKEN}">
                   <input type="text" name="msg">
                   <input type="submit" value="Enviar">
                 </form>
@@ -126,6 +131,8 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             session = get_session(session_id)
             user_data = session["user"]
             csrf_token = session["csrf"]
+            print("SESSION_ID:", session_id)
+            print("SESSION:", get_session(session_id))
             mensaje = f"""
             <html>
               <body>
@@ -165,17 +172,35 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/comment":
             length = int(self.headers.get("Content-Length"))
             post_data = self.rfile.read(length).decode("utf-8")
-            params = dict(x.split("=") for x in post_data.split("&"))
-             
-            msg = params.get("msg", "")
-            decode_msg = urllib.parse.unquote_plus(msg)
-            COMMENTS.append(decode_msg)  # ⚠️ Vulnerable: se guarda sin sanitizar
 
-             # Redirigir de nuevo a /comment
-            self.send_response(303)
-            self.send_header("Location", "/comment")
-            self.end_headers()
-            return
+         # Parser correcto
+            import urllib.parse
+            params = urllib.parse.parse_qs(post_data)
+
+         # 1. Obtener token
+            token = params.get("csrf_token", [""])[0]
+            msg = params.get("msg", [""])[0]
+            print("POST_DATA:", post_data)
+            print("PARAMS:",params)
+            print("TOKEN_RECIBIDO:", token)
+            print("TOKEN_ESPERADO:", CSRF_TOKEN)
+         # 2. Validar token
+            if token != CSRF_TOKEN:
+              self.send_response(403)
+              self.end_headers()
+              self.wfile.write(b"CSRF token invalido")
+              return
+
+         # 3. Procesar comentario
+        
+        decode_msg = unquote_plus(msg)
+        COMMENTS.append(decode_msg)
+
+         # 4. Redirigir
+        self.send_response(303)
+        self.send_header("Location", "/comment")
+        self.end_headers()
+        return
          # --- FIN NUEVO ENDPOINT ---
 
 
@@ -189,8 +214,13 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
 
             length = int(self.headers.get("Content-Length"))
             post_data = self.rfile.read(length).decode("utf-8")
-            params = dict(x.split("=") for x in post_data.split("&"))
-            csrf_token = params.get("csrf_token")
+            
+            #Parser robusto
+            
+            import urllib.parse
+            params = urllib.parse.parse_qs(post_data)
+            
+            csrf_token = params.get("csrf_token", [""])[0]
 
             if not csrf_token:
                 self.send_response(400)  # Bad Request
@@ -205,7 +235,7 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(401)  # Unauthorized
                 self.send_header("Content-type", "text/html; charset=utf-8")
                 mensaje = "<html><body><h1>Sesión no válida ❌</h1></body></html>"
-            elif validate_csrf(session, params.get("csrf_token")):
+            elif validate_csrf(session, csrf_token):
                 self.send_response(200)  # OK
                 self.send_header("Content-type", "text/html; charset=utf-8")
                 mensaje = "<html><body><h1>Transferencia realizada con éxito ✅</h1></body></html>"

@@ -11,7 +11,11 @@ def load_sessions():
     if os.path.exists(SESSION_FILE):
         with open(SESSION_FILE,"r")as f:
             try:
-                sessions = json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    sessions = data
+                else:
+                    sessions = {} # Si no es dict, lo reseteamos
             except json.JSONDecodeError:
                 sessions = {}
     else:
