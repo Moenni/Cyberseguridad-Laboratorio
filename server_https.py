@@ -115,10 +115,15 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             """
             self.wfile.write(mensaje.encode("utf-8"))
             return
-
+          #Redireccion al login si no se especifica ruta
+        if self.path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.end_headers()
+            
         # Endpoint de login (formulario)
-        if self.path == "/login" and self.command == "GET":
-          #Mostrar formulario de login
+        if self.path == "/login":
+         # Mostrar formulario de login
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
@@ -127,58 +132,40 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
               <body>
                <h1>Login</h1>
                <form action="/login" method="POST">
-                Usuario: <input type="text" name="username"><br>
-                Contraseña: <input type="password" name="password"><br>
-                <input type="submit" value="Ingresar">
+               Usuario: <input type="text" name="username"><br>
+               Contraseña: <input type="password" name="password"><br>
+               <input type="submit" value="Ingresar">
                </form>
-             </body>
+              </body>
             </html>
             """
             self.wfile.write(login_form.encode("utf-8"))
             
-      
-          
-        # Flujo normal de sesión
-        if session_id and get_session(session_id):
-            session = get_session(session_id)
-            user_data = session["user"]
-            csrf_token = session["csrf"]
-            print("SESSION_ID:", session_id)
-            print("SESSION:", get_session(session_id))
-            mensaje = f"""
-            <html>
-              <body>
-                <h1>Bienvenido de nuevo, {sanitize_input(user_data)}!</h1>
-                <form action="/transfer" method="POST">
-                  <input type="hidden" name="csrf_token" value="{csrf_token}">
-                  <input type="submit" value="Simular transferencia segura">
-                </form>
-              </body>
-            </html>
-            """
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.send_header("Set-Cookie",f"sessionId={session_id};Secure;HttpOnly;SameSite=Strict;Max-Age=30")
-            self.end_headers()
-        else:
-            session_id, user_data, csrf_token = create_session()
-            mensaje = f"""
-            <html>
-              <body>
-                <h1>Nueva sesión creada: {sanitize_input(user_data)}</h1>
-                <form action="/transfer" method="POST">
-                  <input type="hidden" name="csrf_token" value="{csrf_token}">
-                  <input type="submit" value="Simular transferencia segura">
-                </form>
-              </body>
-            </html>
-            """
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.send_header("Set-Cookie", f"sessionId={session_id}; Secure; HttpOnly; SameSite=Strict; Max-Age=30")
-            self.end_headers()
+        elif self.path == "/transferencias.html":
+            try:
+                with open("transferencias.html", "r", encoding="utf-8") as f:
+                    contenido = f.read()
+            
+                # Buscar la cookie de sesión
+                cookies = self.headers.get("Cookie")
+                session_id = None
+                if cookies:
+                   for cookie in cookies.split(";"):
+                       if cookie.strip().startswith("sessionId="):
+                          session_id = cookie.strip().split("=")[1]
+                session = get_session(session_id)
+                if session:
+                   contenido = contenido.replace("{username}", sanitize_input(session["user"]))
+                   contenido = contenido.replace("{csrf_token}", session["csrf"])
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(contenido.encode("utf-8"))
+            except FileNotFoundError:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"Archivo transferencias.html no encontrado")
 
-        self.wfile.write(mensaje.encode("utf-8"))
 
     def do_POST(self):
         cookies = self.headers.get("Cookie")

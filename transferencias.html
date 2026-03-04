@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bienvenido admin a Transferencias Seguras</title>
+    <title>Bienvenido {username} a Transferencias Seguras</title>
 </head>
 <body>
+    <h1>Bienvenido de nuevo, {username}!</h1>
+
     <form action="/transfer" method="POST">
-        <input type="hidden" name="csrf_token" value="abcdef">
+        <input type="hidden" name="csrf_token" value="{csrf_token}">
 
         <label for="monto">Monto:</label>
         <input type="text" id="monto" name="monto" 
@@ -23,5 +25,14 @@
 
         <input type="submit" value="Enviar transferencia">
     </form>
+
+    <hr>
+    <p>Opciones de navegación:</p>
+    <ul>
+        <li><a href="/login">Cerrar sesión</a></li>
+        <li><a href="/comment">Ir a comentarios</a></li>
+    </ul>
+</body>
+</html>
 </body>
 </html>
