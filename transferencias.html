@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenido admin a Transferencias Seguras</title>
+</head>
+<body>
+    <form action="/transfer" method="POST">
+        <input type="hidden" name="csrf_token" value="abcdef">
+
+        <label for="monto">Monto:</label>
+        <input type="text" id="monto" name="monto" 
+               placeholder="Ingrese el monto" title="Monto a transferir">
+
+        <br><br>
+
+        <label for="cuenta">Cuenta:</label>
+        <input type="text" id="cuenta" name="cuenta" 
+               placeholder="Ingrese la cuenta" title="Número de cuenta destino">
+
+        <br><br>
+
+        <input type="submit" value="Enviar transferencia">
+    </form>
+</body>
+</html>

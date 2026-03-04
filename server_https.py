@@ -4,9 +4,13 @@ import json
 import urllib.parse
 import html
 import secrets
-from sessions import( create_session, get_session, delete_session, regenerate_session, load_sessions,is_session_valid)
+import bcrypt
+from hash_conSalt import password, hashed
+from sessions import( create_session, get_session, delete_session, regenerate_session, load_sessions,is_session_valid,validate_csrf)
 from security import validate_csrf, sanitize_input
 from urllib.parse import unquote_plus
+from cryptography.fernet import Fernet
+
 CSRF_TOKEN = secrets.token_hex(16)  # Token CSRF global para demostración (en producción debería ser por sesión)
 
 
@@ -16,7 +20,7 @@ with open("sessions.json", "w") as f:
     f.write("[]")
 # Diccionario de usuarios válidos
 USERS = {
-    "admin": "1234",
+    "admin": b'$2b$12$UfGe9ISL8AbTFXcXUB7kreyu4J5ry7W911vr4gSutfoGCy4Jod24e',  # Hash bcrypt de "admin123"
     "nicolas": "seguridad2026",
     "prueba": "abc123"
 }
@@ -113,11 +117,12 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # Endpoint de login (formulario)
-        if self.path == "/login":
+        if self.path == "/login" and self.command == "GET":
+          #Mostrar formulario de login
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            mensaje = """
+            login_form = """
             <html>
               <body>
                <h1>Login</h1>
@@ -129,9 +134,10 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
              </body>
             </html>
             """
-            self.wfile.write(mensaje.encode("utf-8"))
-            return
-
+            self.wfile.write(login_form.encode("utf-8"))
+            
+      
+          
         # Flujo normal de sesión
         if session_id and get_session(session_id):
             session = get_session(session_id)
@@ -246,7 +252,9 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
                mensaje = "<html><body><h1>Falta token CSRF ❌</h1></body></html>"
                self.wfile.write(mensaje.encode("utf-8"))
                return
-
+           
+           #Validación de sesión y token CSRF
+           
            session = get_session(session_id)
            if not session:
               self.send_response(401)  # Unauthorized
@@ -255,20 +263,26 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
               mensaje = "<html><body><h1>Sesión no válida ❌</h1></body></html>"
               self.wfile.write(mensaje.encode("utf-8"))
               return
-
-           if validate_csrf(session, csrf_token):
-              self.send_response(200)  # OK
-              self.send_header("Content-type", "text/html; charset=utf-8")
-              self.end_headers()
-              mensaje = "<html><body><h1>Transferencia realizada con éxito ✅</h1></body></html>"
-           else:
-              self.send_response(403)  # Forbidden
-              self.send_header("Content-type", "text/html; charset=utf-8")
-              self.end_headers()
-              mensaje = "<html><body><h1>Token CSRF inválido ❌</h1></body></html>"
-
+        
+         #Cifrado AES/Fernet
+           key= load_key() #funcion definida fuera de la clase
+           cipher = Fernet(key) #import ya esta arriba del archivo
+           
+           monto= params.get("monto",[""])[0]
+           cuenta= params.get("cuenta",[""])[0]
+           datos = f"Transferencia de ${monto} a la cuenta {cuenta}"
+           
+           datos_cifrados = cipher.encrypt(datos.encode())
+           with open("transferencias.txt","ab")as f:
+              f.write(datos_cifrados + b"\n")
+              
+           #Respuesta al cliente
+           self.send_response(200)
+           self.send_header("Content-type", "text/html; charset=utf-8")
+           self.end_headers()
+           mensaje = "<html><body><h1>Transferencia simulada con éxito ✅ (datos cifrados)</h1></body></html>"   
            self.wfile.write(mensaje.encode("utf-8"))
-           return
+           
         # Endpoint de login (validación de credenciales)
         if self.path == "/login":
             length = int(self.headers.get("Content-Length"))
@@ -280,43 +294,49 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
             username=params.get("username",[""])[0]
             password=params.get("password",[""])[0]
             
-            #Validacion simple (ejemplo)
-            if username=="admin" and password=="1234":
-              #1- si habia sesión previa, la eliminamos
+            # Verificacion con bcrypt
+            stored_hash= USERS.get(username)
+            if stored_hash and bcrypt.checkpw(password.encode(),stored_hash):
+              
+              #1.Si habia una sesión previa, la eliminamos
               if session_id:
                     delete_session(session_id)
-              #2- creamos nueva sesión segura
-            
+                    
+              #2.Creamos una sesión nueva y segura
               new_session_id,user_data,csrf_token = create_session(username)
               
-              #3- Enviar cookie segura
-              
-              self.send_response(200)
-              self.send_header("Content-type", "text/html; charset=utf-8")
+              #3.Enviamos cookie segura
+              self.send_response(302)
+              self.send_header("Location", "/transferencias.html")
               self.send_header("Set-Cookie", f"sessionId={new_session_id}; HttpOnly; Secure; SameSite=Strict")
-              self.end_headers()
-              
-              mensaje=f"""
-               <html>
-                 <body>
-                   <h1>Login exitoso ✅</h1>
-                   <p>Bienvenido, {sanitize_input(username)}.</p>
-                   <form action="/transfer" method="POST">
-                     <input type="hidden" name="csrf_token" value="{csrf_token}">
-                     <input type="submit" value="Simular transferencia segura">
-                   </form>
-                 </body>
-               </html>
-              """
-              self.wfile.write(mensaje.encode("utf-8"))
+              self.end_headers()                 
             else:
               self.send_response(403)
               self.send_header("Content-type", "text/html; charset=utf-8")
               self.end_headers()
               self.wfile.write("Credenciales inválidas ❌".encode("utf-8")) 
-
-
               
+        elif self.path == "/transferencias.html":
+            try:
+                with open("transferencias.html","rb")as f:
+                  contenido = f.read()
+                self.send_response(200)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(contenido)
+            except FileNotFoundError:
+                self.send_response(404)
+                self.send_header("Content-type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write("Archivo no encontrado ❌".encode("utf-8"))    
+
+# Cargar clave para cifrado simétrico (Fernet)             
+def load_key():
+  with open("secret.key","rb")as f:
+    return f.read()
+key = load_key()
+cipher = Fernet(key)
+
 
 # Configuración del servidor HTTPS
 server_address = ('localhost', 4443)
