@@ -63,10 +63,10 @@ class CookieHandler(http.server.BaseHTTPRequestHandler):
                 <ul>
              """
             for c in COMMENTS:
-                # ⚠️ Vulnerable: se muestra sin sanitizar
-               #page += f"<li>{sanitize_input(c)}</li>" ✅ Seguro: se sanitiza antes de mostrar
+                
+               #page += f"<li>{c}</li>" #⚠️ Vulnerable: se muestra sin sanitizar
 
-               page +=f"<li>{html.escape(c)}</li>" #Para que se active el Alert Stored XSS no se sanitiza el inpunt
+               page +=f"<li>{html.escape(c)}</li>" #✅ Seguro: se escapa antes de mostrar
 
             page += "</ul></body></html>"
 
